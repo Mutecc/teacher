@@ -4,61 +4,86 @@
     <base target="_top">
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Mutec Teacher</title>
     <link rel="icon" type="image/png" href="https://img5.pic.in.th/file/secure-sv1/Logo-IWF.png">
-    
+
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
+
     <!-- Font Awesome CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
+
     <!-- Sarabun Font from Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
-    
+
     <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            background: #f0f2f5;
+        }
         body {
             font-family: 'Sarabun', sans-serif;
         }
-        /* Style for the iframe to ensure it covers the full viewport */
+        /* iframe เต็มหน้าจอ (dvh รองรับ Safari บน iPhone/iPad) */
         #mainIframe {
             width: 100%;
             height: 100vh;
-            display: block; /* Ensures no extra space around it */
+            height: 100dvh;
+            display: block;
+            border: 0;
         }
     </style>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            // URL of your Google Apps Script web app
+        document.addEventListener('DOMContentLoaded', function () {
+            // URL ของ Google Apps Script web app
             const web_app_url = 'https://script.google.com/macros/s/AKfycbz53O4mL6pRvyzg7c7E1ZIsyp1vt8p7HQn7_16PG3zxM9I99wsHlTOaXwQhe0xPi7la/exec';
-            
-            // Function to check for In-App Browser, while excluding Google Chrome
+
+            // ---------- ระบบเก็บ session token (แก้ปัญหาหลุดบน Apple) ----------
+            const TOKEN_KEY = 'mutec_session_token';
+
+            function getToken() { try { return localStorage.getItem(TOKEN_KEY); } catch (e) { return null; } }
+            function setToken(t) { try { localStorage.setItem(TOKEN_KEY, t); } catch (e) {} }
+            function clearToken() { try { localStorage.removeItem(TOKEN_KEY); } catch (e) {} }
+
+            // รับ token จากแอป Apps Script (ตอนล็อกอิน/ออกจากระบบ)
+            window.addEventListener('message', function (e) {
+                const okOrigin = e.origin === 'https://script.google.com' || (e.origin || '').endsWith('.googleusercontent.com');
+                if (!okOrigin || !e.data || e.data.source !== 'mutec-app') return;
+                if (e.data.type === 'save-token' && typeof e.data.token === 'string') setToken(e.data.token);
+                if (e.data.type === 'clear-token') clearToken();
+            });
+
+            // โหลดแอปลง iframe พร้อมแนบ token (ถ้ามี)
+            function loadApp() {
+                const token = getToken();
+                const url = web_app_url + (token ? (web_app_url.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token) : '');
+                mainIframe.src = url;
+            }
+
+            // ---------- ตรวจ In-App Browser (ไม่นับ Chrome) ----------
             function is_InAppBrowser() {
                 const userAgent = navigator.userAgent || navigator.vendor || window.opera;
                 const isChrome = /Chrome/.test(userAgent);
-                
-                // Check for common in-app browser user agents, excluding Chrome
                 return (
-                    !isChrome && 
+                    !isChrome &&
                     /FBAV|FBAN|LINE|Tiktok|Instagram|Twitter|Snapchat|Telegram|MicroMessenger|Pinterest|Reddit|Threads/i.test(userAgent)
                 );
             }
 
-            // Get the main iframe element
             const mainIframe = document.getElementById('mainIframe');
             const urlParams = new URLSearchParams(window.location.search);
-            
-            // If the URL already has the 'openExternalBrowser' parameter, we assume it's opened in a main browser
+
+            // ถ้ามีพารามิเตอร์ openExternalBrowser แสดงว่าเปิดในเบราว์เซอร์หลักแล้ว
             if (urlParams.has('openExternalBrowser')) {
-                mainIframe.src = web_app_url;
+                loadApp();
                 return;
             }
 
-            // Check if it's an In-App Browser and if so, show the modal
             if (is_InAppBrowser()) {
                 const modal = document.getElementById('inAppBrowserModal');
                 const confirmButton = document.getElementById('confirmButton');
@@ -68,10 +93,9 @@
                 const urlToRedirect = new URL(window.location.href);
                 urlToRedirect.searchParams.set('openExternalBrowser', '1');
 
-                // Show the modal and hide the iframe
                 modal.classList.remove('hidden');
                 mainIframe.style.display = 'none';
-                
+
                 confirmButton.addEventListener('click', () => {
                     window.location.href = urlToRedirect.toString();
                 });
@@ -81,9 +105,7 @@
                         await navigator.clipboard.writeText(urlToRedirect.toString());
                         copyMessage.textContent = 'คัดลอกแล้ว!';
                         copyMessage.classList.remove('hidden');
-                        setTimeout(() => {
-                            copyMessage.classList.add('hidden');
-                        }, 2000);
+                        setTimeout(() => copyMessage.classList.add('hidden'), 2000);
                     } catch (err) {
                         copyMessage.textContent = 'ไม่สามารถคัดลอกได้!';
                         copyMessage.classList.remove('hidden');
@@ -91,8 +113,7 @@
                     }
                 });
             } else {
-                // If it's not an In-App Browser, load the Apps Script URL directly into the iframe
-                mainIframe.src = web_app_url;
+                loadApp();
             }
         });
     </script>
@@ -103,20 +124,19 @@
         <div class="bg-white rounded-none sm:rounded-lg shadow-none sm:shadow-xl w-full h-full sm:max-w-sm sm:h-auto p-6 flex flex-col justify-between text-center">
             <div>
                 <div class="flex flex-col items-center justify-center mb-6">
-                    <!-- Heart icon from Font Awesome -->
                     <i class="fa-solid fa-heart text-red-500 text-5xl mb-4"></i>
                 </div>
-                
+
                 <h2 class="text-2xl font-bold text-gray-800 mb-2">เปิดในเบราว์เซอร์หลัก</h2>
                 <p class="text-gray-600 mb-6 text-sm">เพื่อประสิทธิภาพสูงสุดในการใช้งาน กรุณาเปิดหน้าเว็บนี้ในเบราว์เซอร์หลัก (เช่น Chrome, Safari) ค่ะ</p>
-                
+
                 <div class="text-left text-sm text-gray-700 mt-4 space-y-2">
                     <p><b>คำแนะนำ:</b></p>
                     <p>• หากเปิดลิงก์นี้ด้วย Facebook และแอปพลิเคชันอื่นๆ: กรุณากดปุ่ม "คัดลอกลิงก์" เพื่อนำไปวางบนเบราว์เซอร์หลัก</p>
                     <p>• หากเปิดผ่าน LINE: กดปุ่ม "เปิดเบราว์เซอร์" ได้เลยค่ะ</p>
                 </div>
             </div>
-            
+
             <div class="flex flex-col items-center mt-auto">
                 <div class="flex justify-center space-x-4 mb-4">
                     <button id="confirmButton" class="px-6 py-2 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-75 transition-colors duration-200">
@@ -131,7 +151,7 @@
         </div>
     </div>
 
-    <!-- The iframe where the main content will be displayed -->
-    <iframe id="mainIframe" scrolling="yes" src="https://script.google.com/macros/s/AKfycbz53O4mL6pRvyzg7c7E1ZIsyp1vt8p7HQn7_16PG3zxM9I99wsHlTOaXwQhe0xPi7la/exec" frameborder="0"></iframe>
+    <!-- iframe แสดงแอป (src ถูกกำหนดด้วย JavaScript เพื่อแนบ token) -->
+    <iframe id="mainIframe" scrolling="yes" frameborder="0" allow="camera; microphone; geolocation; clipboard-write"></iframe>
 </body>
 </html>
